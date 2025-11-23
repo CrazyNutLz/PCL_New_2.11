@@ -515,6 +515,13 @@ Refresh:
     Public Shared Sub HiddenRefresh() Handles Me.Loaded
         If FrmMain.PanTitleSelect Is Nothing OrElse Not FrmMain.PanTitleSelect.IsLoaded Then Return
         Try
+            '强制隐藏一些界面
+            Setup.Set("UiHiddenSetupLink", True)
+            Setup.Set("UiHiddenPageLink", True)
+            Setup.Set("UiHiddenOtherTest", True)
+            Setup.Set("UiHiddenOtherFeedback", True)
+            Setup.Set("UiHiddenOtherVote", True)
+
             '顶部栏
             If Not HiddenForceShow AndAlso Setup.Get("UiHiddenPageDownload") AndAlso Setup.Get("UiHiddenPageLink") AndAlso Setup.Get("UiHiddenPageSetup") AndAlso Setup.Get("UiHiddenPageOther") Then
                 '顶部栏已被全部隐藏

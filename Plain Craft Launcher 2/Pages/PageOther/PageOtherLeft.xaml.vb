@@ -3,6 +3,7 @@
     Private IsLoad As Boolean = False
     Private IsPageSwitched As Boolean = False '如果在 Loaded 前切换到其他页面，会导致触发 Loaded 时再次切换一次
     Private Sub PageOtherLeft_Loaded(sender As Object, e As RoutedEventArgs) Handles Me.Loaded
+
         '是否处于隐藏的子页面
         Dim IsHiddenPage As Boolean = False
         If ItemHelp.Checked AndAlso Setup.Get("UiHiddenOtherHelp") Then IsHiddenPage = True
@@ -37,6 +38,7 @@
     Public PageID As FormMain.PageSubType
     Public Sub New()
         InitializeComponent()
+
         ' 选择第一个未被禁用的子页面（优先 关于与鸣谢）
         If Not Setup.Get("UiHiddenOtherAbout") Then
             PageID = FormMain.PageSubType.OtherAbout

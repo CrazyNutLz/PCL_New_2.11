@@ -337,6 +337,7 @@ Public Class FormMain
         [AddHandler](DragDrop.DragOverEvent, New DragEventHandler(AddressOf HandleDrag), handledEventsToo:=True)
         '加载 UI
         InitializeComponent()
+
         Opacity = 0
         '开启管理员权限下的文件拖拽
         If IsAdmin() Then
@@ -436,6 +437,7 @@ Public Class FormMain
         'Timer 启动
         AniStart()
         TimerMainStart()
+
         '加载池
         RunInNewThread(
         Sub()
