@@ -48,12 +48,12 @@ Friend Module ModSecret
             Environment.[Exit](ProcessReturnValues.Cancel)
         End If
         '开源版本提示
-        MyMsgBox($"该版本中无法使用以下特性：
-- CurseForge API 调用：需要你自行申请 API Key，然后添加到 ModSecret.vb 的开头
-- 正版登录：需要你自行申请 Client ID，然后添加到 ModSecret.vb 的开头
-- 更新与联网通知：避免滥用隐患
-- 主题切换：这是需要赞助解锁的纪念性质的功能，别让赞助者太伤心啦……
-- 百宝箱：开发早期往里面塞了些开发工具，整理起来太麻烦了", "开源版本说明")
+        '        MyMsgBox($"该版本中无法使用以下特性：
+        '- CurseForge API 调用：需要你自行申请 API Key，然后添加到 ModSecret.vb 的开头
+        '- 正版登录：需要你自行申请 Client ID，然后添加到 ModSecret.vb 的开头
+        '- 更新与联网通知：避免滥用隐患
+        '- 主题切换：这是需要赞助解锁的纪念性质的功能，别让赞助者太伤心啦……
+        '- 百宝箱：开发早期往里面塞了些开发工具，整理起来太麻烦了", "开源版本说明")
     End Sub
 
     ''' <summary>
