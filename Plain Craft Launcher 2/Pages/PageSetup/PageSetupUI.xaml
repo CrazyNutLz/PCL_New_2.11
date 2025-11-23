@@ -80,7 +80,7 @@
                             <local:MyRadioBox Grid.Column="3" Grid.Row="2" Text="跳票红" x:Name="RadioLauncherTheme10" Tag="UiLauncherTheme/10" IsEnabled="True" ToolTip="进行一次正版登录，支持正版游戏！" ToolTipService.ShowOnDisabled="True" ToolTipService.Placement="Bottom" />
 
                             <local:MyRadioBox Grid.Column="4" Grid.Row="2" Text="极客蓝" x:Name="RadioLauncherTheme11" Tag="UiLauncherTheme/11" IsEnabled="True" ToolTipService.Placement="Bottom" ToolTip="右键打开解密游戏入口" />
-                            <TextBlock Grid.Column="4" Grid.Row="2" x:Name="LabLauncherTheme11Click" Background="{StaticResource ColorBrushSemiTransparent}" ToolTipService.Placement="Bottom" />
+                            <!--<TextBlock Grid.Column="4" Grid.Row="2" x:Name="LabLauncherTheme11Click" Background="{StaticResource ColorBrushSemiTransparent}" ToolTipService.Placement="Bottom" />-->
 
                             <local:MyRadioBox Grid.Column="5" Grid.Row="2" Text="自定义" x:Name="RadioLauncherTheme14" Tag="UiLauncherTheme/14" IsEnabled="True" ToolTipService.Placement="Bottom" ToolTip="需要解锁五个隐藏主题" ToolTipService.ShowOnDisabled="True" />
 
