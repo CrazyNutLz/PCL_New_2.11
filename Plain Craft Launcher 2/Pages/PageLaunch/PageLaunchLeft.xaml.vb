@@ -609,6 +609,20 @@ Finish:
     Public Sub LaunchButtonClick() Handles BtnLaunch.Click
         If McLaunchLoader.State = LoadState.Loading OrElse Not BtnLaunch.IsEnabled OrElse
             （FrmMain.PageRight IsNot Nothing AndAlso FrmMain.PageRight.PageState <> MyPageRight.PageStates.ContentStay AndAlso FrmMain.PageRight.PageState <> MyPageRight.PageStates.ContentEnter） Then Return
+
+        ' 新增：有下载任务时禁止启动
+        Try
+            For Each loader In NetManager.Tasks
+                ' 只要有任意下载任务在进行，就禁止启动
+                If loader.State = LoadState.Loading Then
+                    Hint("当前仍有下载任务在进行，请等待下载完成后再启动游戏！", HintType.Red)
+                    Return
+                End If
+            Next
+        Catch ex As Exception
+            Log(ex, "检查下载任务状态失败", LogLevel.Hint)
+        End Try
+
         '愚人节处理
         If IsAprilEnabled AndAlso Not IsAprilGiveup Then
             ThemeUnlock(12, False, "隐藏主题 滑稽彩 已解锁！")
@@ -626,8 +640,11 @@ Finish:
             FrmMain.PageChange(FormMain.PageType.Download, FormMain.PageSubType.DownloadInstall)
         End If
     End Sub
+
     Private BtnLaunchState As Integer = 0
     Private BtnLaunchVersion As McVersion = Nothing
+
+
     Public Sub RefreshButtonsUI() Handles BtnLaunch.Loaded
         If Not BtnLaunch.IsLoaded Then Return
         '获取当前状态
