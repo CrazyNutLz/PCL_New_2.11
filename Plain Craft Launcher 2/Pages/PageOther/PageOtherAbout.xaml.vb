@@ -18,17 +18,21 @@
 
     End Sub
 
-    Public Shared Sub CopyIdentify() Handles BtnDonateCopy.Click
-        ClipboardSet(Identify)
-    End Sub
-    Private Sub BtnDonateCodeInput_Click() Handles BtnDonateInput.Click
-        DonateCodeInput()
-    End Sub
+    'Public Shared Sub CopyIdentify() Handles BtnDonateCopy.Click
+    '    ClipboardSet(Identify)
+    'End Sub
+    'Private Sub BtnDonateCodeInput_Click() Handles BtnDonateInput.Click
+    '    DonateCodeInput()
+    'End Sub
 
 #If DEBUG Then
     Private Sub BtnDonateOutput_Click(sender As Object, e As EventArgs) Handles BtnDonateOutput.Click
         DonateCodeGenerate()
     End Sub
 #End If
+
+    Private Sub BtnFuckMcbbs_Click(sender As Object, e As EventArgs) Handles BtnFuckMcbbs.Click
+        ModMain.Hint("老雕感谢你为MCBBS吐出的口水")
+    End Sub
 
 End Class

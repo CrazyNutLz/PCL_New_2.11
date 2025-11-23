@@ -9,17 +9,18 @@
         If ItemAbout.Checked AndAlso Setup.Get("UiHiddenOtherAbout") Then IsHiddenPage = True
         If ItemTest.Checked AndAlso Setup.Get("UiHiddenOtherTest") Then IsHiddenPage = True
         If PageSetupUI.HiddenForceShow Then IsHiddenPage = False
-        '若页面错误，或尚未加载，则继续
+
         If IsLoad AndAlso Not IsHiddenPage Then Return
         IsLoad = True
-        '刷新子页面隐藏情况
+
         PageSetupUI.HiddenRefresh()
-        '选择第一个未被禁用的子页面
+
+        ' 选择第一个未被禁用的子页面（优先 关于与鸣谢）
         If IsPageSwitched Then Return
-        If Not Setup.Get("UiHiddenOtherHelp") Then
-            ItemHelp.SetChecked(True, False, False)
-        ElseIf Not Setup.Get("UiHiddenOtherAbout") Then
+        If Not Setup.Get("UiHiddenOtherAbout") Then
             ItemAbout.SetChecked(True, False, False)
+        ElseIf Not Setup.Get("UiHiddenOtherHelp") Then
+            ItemHelp.SetChecked(True, False, False)
         Else
             ItemTest.SetChecked(True, False, False)
         End If
@@ -36,11 +37,11 @@
     Public PageID As FormMain.PageSubType
     Public Sub New()
         InitializeComponent()
-        '选择第一个未被禁用的子页面
-        If Not Setup.Get("UiHiddenOtherHelp") Then
-            PageID = FormMain.PageSubType.OtherHelp
-        ElseIf Not Setup.Get("UiHiddenOtherAbout") Then
+        ' 选择第一个未被禁用的子页面（优先 关于与鸣谢）
+        If Not Setup.Get("UiHiddenOtherAbout") Then
             PageID = FormMain.PageSubType.OtherAbout
+        ElseIf Not Setup.Get("UiHiddenOtherHelp") Then
+            PageID = FormMain.PageSubType.OtherHelp
         Else
             PageID = FormMain.PageSubType.OtherTest
         End If
