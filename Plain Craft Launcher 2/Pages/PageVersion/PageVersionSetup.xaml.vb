@@ -396,9 +396,9 @@ PreFin:
     End Sub
 
     '统一通行证
-    Private Sub BtnServerNideWeb_Click(sender As Object, e As EventArgs) Handles BtnServerNideWeb.Click
-        OpenWebsite("https://login.mc-user.com:233/server/intro")
-    End Sub
+    'Private Sub BtnServerNideWeb_Click(sender As Object, e As EventArgs) Handles BtnServerNideWeb.Click
+    '    OpenWebsite("https://login.mc-user.com:233/server/intro")
+    'End Sub
 
     'LittleSkin
     Private Sub BtnServerAuthLittle_Click(sender As Object, e As EventArgs) Handles BtnServerAuthLittle.Click

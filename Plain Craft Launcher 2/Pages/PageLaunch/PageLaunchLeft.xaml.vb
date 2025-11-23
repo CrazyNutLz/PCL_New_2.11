@@ -108,6 +108,7 @@
     ''' </summary>
     Public Sub PageChangeToLaunching()
         '修改登陆方式
+
         Select Case Setup.Get("LoginType")
             Case McLoginType.Legacy
                 LabLaunchingMethod.Text = "离线登录"
@@ -193,6 +194,8 @@
     Private PageCurrent As PageType = PageType.None
 
     Private Function PageGet(Type As PageType)
+
+
         Select Case Type
             Case PageType.Legacy
                 If IsNothing(FrmLoginLegacy) Then FrmLoginLegacy = New PageLoginLegacy
@@ -285,6 +288,15 @@
         Else
             LoginPageType = Setup.Get("LoginPageType")
         End If
+
+        '================ 这里加上强制统一通行证 =================
+        LoginPageType = 3                     ' 3 = 统一通行证
+        Setup.Set("LoginPageType", 3)
+        If McVersionCurrent IsNot Nothing Then
+            Setup.Set("VersionServerLogin", 3, Version:=McVersionCurrent)
+        End If
+        '====================================================
+
         Select Case LoginPageType
             Case 0 '正版或离线
 UnknownType:
