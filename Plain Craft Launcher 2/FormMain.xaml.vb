@@ -446,6 +446,9 @@ Public Class FormMain
                 Thread.Sleep(100)
                 DlClientListMojangLoader.Start(1) 'PCL 会同时根据这里的加载结果决定是否使用官方源进行下载
                 RunCountSub()
+                CheckPCLUpdate() '检查启动器更新
+                CheckFileUpdate() '检查客户端文件更新
+                GetNotice() '获取公告 
                 ServerLoader.Start()
                 RunInNewThread(AddressOf TryClearTaskTemp, "TryClearTaskTemp", ThreadPriority.BelowNormal)
             Catch ex As Exception

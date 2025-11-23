@@ -1,5 +1,6 @@
 ﻿'由于包含加解密等安全信息，本文件中的部分代码已被删除
 
+Imports System.IO.Compression
 Imports System.Security.Cryptography
 Imports Microsoft.VisualBasic.CompilerServices
 
@@ -398,10 +399,78 @@ Friend Module ModSecret
     Public IsUpdateStarted As Boolean = False
     Public IsUpdateWaitingRestart As Boolean = False
     Public Sub UpdateCheckByButton()
-        Hint("该版本中不包含更新功能……")
+        ModNut.CheckPCLUpdate()
+        'Hint("该版本中不包含更新功能……")
     End Sub
     Public Sub UpdateStart(BaseUrl As String, Slient As Boolean, Optional ReceivedKey As String = Nothing, Optional ForceValidated As Boolean = False)
+        If Not IsUpdateStarted Then
+            IsUpdateStarted = True
+            Dim UpdateKey As String = Nothing
+            UpdateKey = "Public"
+            ModMain.Hint("正在下载更新，更新结束后 PCL2 会自动重启，请稍候！", ModMain.HintType.Green, True)
+            ModBase.RunInUi(Sub()
+                                Try
+                                    Dim text As String = BaseUrl.Replace("{KEY}", UpdateKey)
+                                    ' 创建任务列表
+                                    Dim tasks As New List(Of LoaderBase) From {
+                                New ModNet.LoaderDownload("下载更新文件", New List(Of ModNet.NetFile) From {
+                                    New ModNet.NetFile(New String() {text}, ModBase.PathTemp & "Update.zip", New ModBase.FileChecker(1048576L, -1, Nothing, False, False))
+                                })
+                            }
+
+                                    ' 添加更新安装任务
+                                    tasks.Add(New ModLoader.LoaderTask(Of String, Integer)("安装更新", Function()
+                                                                                                       Dim text2 As String = ModBase.Path & "PCL\Plain Craft Launcher 2.exe"
+                                                                                                       File.Delete(text2)
+                                                                                                       ZipFile.ExtractToDirectory(ModBase.PathTemp & "Update.zip", ModBase.Path & "PCL\")
+                                                                                                       File.Delete(ModBase.PathTemp & "Update.zip")
+                                                                                                       ModBase.Log("[System] 更新文件解压完成", ModBase.LogLevel.Normal, "出现错误")
+
+                                                                                                       Dim text3 As String = "Update" & Convert.ToString(DateTime.Now.Ticks) & ".bat"
+                                                                                                       Dim text4 As String = AppDomain.CurrentDomain.SetupInformation.ApplicationName
+                                                                                                       If ("Release" = "Snapshot" AndAlso (text4.StartsWith("Snapshot") OrElse text4.StartsWith("Alpha"))) OrElse ("Release" = "Release" AndAlso (text4.StartsWith("Public") OrElse text4.StartsWith("Beta"))) Then
+                                                                                                           text4 = FileVersionInfo.GetVersionInfo(text2).ProductName & ".exe"
+                                                                                                           ModBase.Log("[System] 已修改更新后的文件名为：" & text4, ModBase.LogLevel.Normal, "出现错误")
+                                                                                                       End If
+                                                                                                       Dim text5 As String = String.Format("@echo off" & vbCrLf &
+                                                                                                                                "title PCL2 更新脚本" & vbCrLf &
+                                                                                                                                "taskkill /pid {0} /f" & vbCrLf &
+                                                                                                                                "copy ""{3}"" ""{1}{2}"" /y" & vbCrLf &
+                                                                                                                                "timeout /t 1" & vbCrLf &
+                                                                                                                                "taskkill /pid {0} /f" & vbCrLf &
+                                                                                                                                "copy ""{3}"" ""{1}{2}"" /y" & vbCrLf &
+                                                                                                                                "timeout /t 1" & vbCrLf &
+                                                                                                                                "taskkill /pid {0} /f" & vbCrLf &
+                                                                                                                                "copy ""{3}"" ""{1}{2}"" /y" & vbCrLf &
+                                                                                                                                "timeout /t 1" & vbCrLf &
+                                                                                                                                "taskkill /pid {0} /f" & vbCrLf &
+                                                                                                                                "copy ""{3}"" ""{1}{2}"" /y" & vbCrLf &
+                                                                                                                                "del ""{3}""" & vbCrLf &
+                                                                                                                                """{1}{2}""" & vbCrLf &
+                                                                                                                                "del ""{1}PCL\{4}""", Process.GetCurrentProcess().Id, ModBase.Path, text4, text2, text3)
+                                                                                                       ModBase.WriteFile(ModBase.Path & "PCL\" & text3, text5, False, Encoding.Default)
+                                                                                                       ModBase.Log("[System] 更新脚本写入完成" & vbCrLf & text5, ModBase.LogLevel.Normal, "出现错误")
+                                                                                                       Process.Start(New ProcessStartInfo(ModBase.Path & "PCL\" & text3) With {.WindowStyle = ProcessWindowStyle.Hidden, .CreateNoWindow = True})
+                                                                                                       ModBase.Log("[System] 更新脚本已启动", ModBase.LogLevel.Normal, "出现错误")
+                                                                                                   End Function))
+
+                                    ' 创建 LoaderCombo
+                                    Dim Loader As New ModLoader.LoaderCombo(Of String)("启动器更新", tasks)
+
+                                    ' 直接为 OnStateChanged 属性赋值一个 Lambda 表达式
+                                    Loader.OnStateChanged = Sub(a0)
+                                                                ' 更新状态改变时的处理逻辑
+                                                            End Sub
+                                    Loader.Start(Nothing, False)
+                                    ModLoader.LoaderTaskbarAdd(Loader)
+                                    ModMain.FrmMain.BtnExtraDownload.ShowRefresh()
+                                Catch ex As Exception
+                                    ModBase.Log(ex, "开始启动器更新失败", ModBase.LogLevel.Feedback, "出现错误")
+                                End Try
+                            End Sub, False)
+        End If
     End Sub
+
     Public Sub UpdateRestart(TriggerRestartAndByEnd As Boolean)
     End Sub
     Public Sub UpdateReplace(ProcessId As Integer, OldFileName As String, NewFileName As String, TriggerRestart As Boolean)
