@@ -8,7 +8,8 @@ Imports System.Text
 Imports System.Threading.Tasks
 Imports System.IO.Compression
 Imports System.Security.Policy
-
+Imports System.Diagnostics
+Imports Newtonsoft.Json.Linq
 Public Module ModNut
     '版本号
     Public VersionNumber As Single = 212.0F
@@ -105,16 +106,34 @@ Public Module ModNut
     End Sub
 
     Public Sub CheckFileUpdate()
+        Dim sw As Stopwatch = Stopwatch.StartNew()
+
+        '（可选）统计本次检查做了哪些事
+        Dim ruleTotal As Integer = 0
+        Dim unpackCount As Integer = 0
+        Dim downloadCount As Integer = 0
+        Dim deleteCount As Integer = 0
+        Dim skipAsNewestCount As Integer = 0
+
+        ' MD5 缓存：同一次检查中同一文件只算一次
+        Dim md5Cache As New Dictionary(Of String, String)(StringComparer.OrdinalIgnoreCase)
+
         Try
+            ModBase.Log("[ModNut]CheckFileUpdate - 开始检查更新", ModBase.LogLevel.Normal, "Normal")
+
             Dim jsonResponse As String = ModNet.NetRequestByClientRetry(
             "https://flyplayteam.fun/software/server/ClientUpdateInfo2.json",
             Accept:="application/json, text/javascript, */*; q=0.01",
             RequireJson:=True,
             Encoding:=Encoding.UTF8
         )
-            Dim updateFiles As JArray = DirectCast(JsonConvert.DeserializeObject(jsonResponse), JObject)("updatefile")
+
+            Dim root As JObject = DirectCast(JsonConvert.DeserializeObject(jsonResponse), JObject)
+            Dim updateFiles As JArray = DirectCast(root("updatefile"), JArray)
 
             For Each jToken As JToken In updateFiles
+                ruleTotal += 1
+
                 Dim folderPath As String = jToken("floderpath").ToString()
                 Dim oldName As String = jToken("oldname").ToString()
                 Dim oldMD5 As String = jToken("oldmd5").ToString().ToLower().Trim()
@@ -122,30 +141,29 @@ Public Module ModNut
                 Dim newMD5 As String = jToken("newmd5").ToString().ToLower().Trim()
                 Dim downloadPath As String = jToken("downloadpath").ToString()
                 Dim fullPath As String = IO.Path.Combine(AppContext.BaseDirectory, folderPath)
-                Dim showNotice As String = jToken("shownotice").ToString()
+
+                Dim showNoticeStr As String = jToken("shownotice").ToString()
                 Dim noticeText As String = jToken("notice").ToString()
-                Dim operation As String = jToken("opt").ToString().ToLower()
-                Dim enable As String = jToken("enable").ToString().ToLower()
+                Dim operation As String = jToken("opt").ToString().ToLower().Trim()
+                Dim enableStr As String = jToken("enable").ToString().ToLower().Trim()
 
                 ' 禁用则跳过
-                If enable = "false" Then Continue For
+                If enableStr = "false" Then Continue For
 
-                ' 对 delete 模式做个兼容：如果 oldmd5 为空而 newmd5 有值，就当 oldmd5 用
-                If operation = "delete" AndAlso oldMD5 = "" AndAlso newMD5 <> "" Then
-                    oldMD5 = newMD5
-                End If
+                ' delete 模式兼容：如果 oldmd5 为空而 newmd5 有值，就当 oldmd5 用
+                If operation = "delete" AndAlso oldMD5 = "" AndAlso newMD5 <> "" Then oldMD5 = newMD5
 
-                ' 压缩包更新单独处理
+                ' unpack 单独处理
                 If operation = "unpack" Then
+                    unpackCount += 1
                     PackUpdate(jToken)
                     Continue For
                 End If
 
+                Dim showNotice As Boolean = (Not String.IsNullOrEmpty(showNoticeStr) AndAlso showNoticeStr.Trim().ToLower() = "true")
+
                 ' 路径检查 / 创建
-                Dim files As FileInfo() = {}
-                If Directory.Exists(fullPath) Then
-                    files = New DirectoryInfo(fullPath).GetFiles()
-                Else
+                If Not Directory.Exists(fullPath) Then
                     If operation = "add" OrElse operation = "replace" Then
                         Directory.CreateDirectory(fullPath)
                     Else
@@ -153,81 +171,39 @@ Public Module ModNut
                     End If
                 End If
 
-                Dim targetOld As FileInfo = Nothing      ' 命中的旧文件
-                Dim targetOldMD5 As String = Nothing
-                Dim hasCorrectNew As Boolean = False     ' 是否已存在正确的新文件
-                Dim deleteList As New List(Of FileInfo)  ' 所有要删掉的文件（delete 模式）
+                ' =========================
+                ' delete：oldname 命中 OR oldmd5 命中 → 删除（满足其一即可）
+                ' =========================
+                If operation = "delete" Then
+                    Dim deleteSet As New HashSet(Of String)(StringComparer.OrdinalIgnoreCase)
 
-                ' 扫描目录内所有文件
-                For Each file As FileInfo In files
-                    Dim nameMatchOld As Boolean =
-                    (Not String.IsNullOrEmpty(oldName) AndAlso
-                     file.Name.IndexOf(oldName, StringComparison.OrdinalIgnoreCase) >= 0)
-                    Dim nameMatchNew As Boolean =
-                    (Not String.IsNullOrEmpty(newName) AndAlso
-                     file.Name.Equals(newName, StringComparison.OrdinalIgnoreCase))
-
-                    ' 是否需要算 MD5：只有当配置里写了 MD5 时才算，避免浪费
-                    Dim needMd5 As Boolean = False
-                    If oldMD5 <> "" Then needMd5 = True
-                    If (operation = "add" OrElse operation = "replace") AndAlso newMD5 <> "" Then needMd5 = True
-
-                    Dim fileMd5 As String = Nothing
-                    If needMd5 Then
+                    ' 1) oldname：包含命中（通配符枚举，避免全量 FileInfo 分配）
+                    If Not String.IsNullOrEmpty(oldName) Then
                         Try
-                            fileMd5 = GetMD5HashFromFile(file.FullName).ToLower()
+                            For Each p In Directory.EnumerateFiles(fullPath, "*" & oldName & "*", SearchOption.TopDirectoryOnly)
+                                deleteSet.Add(p)
+                            Next
                         Catch ex As Exception
-                            ModBase.Log(ex, "CheckFileUpdate 计算 MD5 失败（" & file.FullName & "）", ModBase.LogLevel.Hint, "出现错误")
+                            ModBase.Log(ex, "CheckFileUpdate(delete) 枚举文件失败：" & fullPath, ModBase.LogLevel.Hint, "出现错误")
                         End Try
                     End If
 
-                    Dim md5MatchOld As Boolean = (oldMD5 <> "" AndAlso fileMd5 IsNot Nothing AndAlso fileMd5 = oldMD5)
-                    Dim md5MatchNew As Boolean = (newMD5 <> "" AndAlso fileMd5 IsNot Nothing AndAlso fileMd5 = newMD5)
-
-                    If operation = "delete" Then
-                        ' 删除模式：只要名字命中 或 MD5 命中，就进删除列表
-                        If nameMatchOld OrElse md5MatchOld Then
-                            deleteList.Add(file)
-                        End If
-                    Else
-                        ' add / replace 模式
-
-                        ' 1) 记录旧文件（老版本）
-                        If (nameMatchOld OrElse md5MatchOld) AndAlso targetOld Is Nothing Then
-                            targetOld = file
-                            targetOldMD5 = fileMd5
-                        End If
-
-                        ' 2) 检查是否已经存在“正确的新文件”
-                        If nameMatchNew OrElse md5MatchNew Then
-                            If newMD5 <> "" Then
-                                If md5MatchNew Then
-                                    ' 名字 / MD5 都符合，认为已经是新版本
-                                    hasCorrectNew = True
-                                Else
-                                    ' 名字一样但 MD5 不同，当成旧文件替换掉
-                                    If targetOld Is Nothing Then
-                                        targetOld = file
-                                        targetOldMD5 = fileMd5
-                                    End If
-                                End If
-                            Else
-                                ' 未提供 newMD5，只要同名就当成已有新版本
-                                hasCorrectNew = True
-                            End If
-                        End If
-                    End If
-                Next
-
-                '============ delete 模式：删文件 ============
-                If operation = "delete" Then
-                    If deleteList.Count = 0 Then
-                        Continue For
+                    ' 2) oldmd5：为了严格满足 OR 语义，只要配置了 oldMD5 就需要全目录比对 MD5
+                    If Not String.IsNullOrEmpty(oldMD5) Then
+                        Try
+                            For Each p In Directory.EnumerateFiles(fullPath, "*", SearchOption.TopDirectoryOnly)
+                                Dim md5 As String = GetMd5Cached(p, md5Cache)
+                                If md5 <> "" AndAlso md5 = oldMD5 Then deleteSet.Add(p)
+                            Next
+                        Catch ex As Exception
+                            ModBase.Log(ex, "CheckFileUpdate(delete) MD5 扫描失败：" & fullPath, ModBase.LogLevel.Hint, "出现错误")
+                        End Try
                     End If
 
-                    Dim userResponseDel As Integer = 1
-                    If showNotice = "true" Then
-                        userResponseDel = ModMain.MyMsgBox(
+                    If deleteSet.Count = 0 Then Continue For
+
+                    If showNotice Then
+                        Dim userResponseDel As Integer = ModMain.MyMsgBox(
                         noticeText,
                         "检测到需删除的文件",
                         "删除", "取消", "",
@@ -236,91 +212,170 @@ Public Module ModNut
                         If userResponseDel <> 1 Then Continue For
                     End If
 
-                    For Each fileToDelete In deleteList
+                    For Each filePath In deleteSet
                         Try
-                            If showNotice = "true" Then
-                                ModMain.Hint("删除文件:" & fileToDelete.FullName, ModMain.HintType.Green, True)
-                            End If
-
-                            ModBase.Log("[ModNut]CheckFileUpdate - 删除文件：" & fileToDelete.FullName, ModBase.LogLevel.Normal, "Normal")
-                            fileToDelete.Delete()
-
+                            If showNotice Then ModMain.Hint("删除文件:" & filePath, ModMain.HintType.Green, True)
+                            ModBase.Log("[ModNut]CheckFileUpdate - 删除文件：" & filePath, ModBase.LogLevel.Normal, "Normal")
+                            File.Delete(filePath)
+                            deleteCount += 1
+                            md5Cache.Remove(filePath)
                         Catch ex As Exception
-                            ModBase.Log(ex, "[ModNut]CheckFileUpdate - 删除文件失败：" & fileToDelete.FullName, ModBase.LogLevel.Feedback, "出现错误")
+                            ModBase.Log(ex, "[ModNut]CheckFileUpdate - 删除文件失败：" & filePath, ModBase.LogLevel.Feedback, "出现错误")
                         End Try
                     Next
 
-                    Continue For ' 这一条配置处理完了，看下一条
-                End If
-
-                '============ add / replace 模式：更新文件 ============
-
-                ' 如果目录里已经有“正确的新文件”，直接跳过（不会再弹更新提示）
-                If hasCorrectNew Then
                     Continue For
                 End If
 
-                ' replace 模式但压根没找到旧文件 → 当成 add 处理
-                If targetOld Is Nothing AndAlso operation = "replace" Then
-                    operation = "add"
+                ' =========================
+                ' add / replace
+                ' =========================
+                Dim newFilePath As String = If(String.IsNullOrEmpty(newName), "", IO.Path.Combine(fullPath, newName))
+
+                ' 先用“直接路径”判断是否已是新版本（避免扫描目录）
+                If Not String.IsNullOrEmpty(newFilePath) AndAlso File.Exists(newFilePath) Then
+                    If String.IsNullOrEmpty(newMD5) Then
+                        skipAsNewestCount += 1
+                        Continue For
+                    Else
+                        Dim md5 As String = GetMd5Cached(newFilePath, md5Cache)
+                        If md5 <> "" AndAlso md5 = newMD5 Then
+                            skipAsNewestCount += 1
+                            Continue For
+                        End If
+                    End If
                 End If
 
-                ' 是否需要弹提示（add / replace 共用原来的提示）
-                Dim userResponse As Integer = 1
-                If showNotice = "true" Then
-                    userResponse = ModMain.MyMsgBox(
+                ' replace：定位旧文件（优先精确路径，其次通配符枚举；必要时才全目录 MD5）
+                Dim targetOldPath As String = Nothing
+
+                If operation = "replace" Then
+                    ' 1) oldname 看起来是完整文件名时：直接命中
+                    If Not String.IsNullOrEmpty(oldName) Then
+                        Dim oldExactPath As String = IO.Path.Combine(fullPath, oldName)
+                        If File.Exists(oldExactPath) Then
+                            targetOldPath = oldExactPath
+                        Else
+                            ' 2) oldname 不是完整文件名：通配符枚举缩小范围
+                            Try
+                                For Each p In Directory.EnumerateFiles(fullPath, "*" & oldName & "*", SearchOption.TopDirectoryOnly)
+                                    ' 排除 newName 本身被当成 old
+                                    If Not String.IsNullOrEmpty(newName) AndAlso
+                                   String.Equals(IO.Path.GetFileName(p), newName, StringComparison.OrdinalIgnoreCase) Then
+                                        Continue For
+                                    End If
+
+                                    If String.IsNullOrEmpty(oldMD5) Then
+                                        targetOldPath = p
+                                        Exit For
+                                    Else
+                                        Dim md5 As String = GetMd5Cached(p, md5Cache)
+                                        If md5 <> "" AndAlso md5 = oldMD5 Then
+                                            targetOldPath = p
+                                            Exit For
+                                        End If
+                                    End If
+                                Next
+                            Catch ex As Exception
+                                ModBase.Log(ex, "CheckFileUpdate(replace) 枚举旧文件失败：" & fullPath, ModBase.LogLevel.Hint, "出现错误")
+                            End Try
+                        End If
+                    ElseIf Not String.IsNullOrEmpty(oldMD5) Then
+                        ' 3) 只有 oldMD5：只能全目录找
+                        Try
+                            For Each p In Directory.EnumerateFiles(fullPath, "*", SearchOption.TopDirectoryOnly)
+                                Dim md5 As String = GetMd5Cached(p, md5Cache)
+                                If md5 <> "" AndAlso md5 = oldMD5 Then
+                                    targetOldPath = p
+                                    Exit For
+                                End If
+                            Next
+                        Catch ex As Exception
+                            ModBase.Log(ex, "CheckFileUpdate(replace) oldMD5 扫描失败：" & fullPath, ModBase.LogLevel.Hint, "出现错误")
+                        End Try
+                    End If
+
+                    ' replace 模式但没找到旧文件 → 当成 add（保持你原逻辑）
+                    If targetOldPath Is Nothing Then operation = "add"
+                End If
+
+                ' 提示（add / replace 共用）
+                If showNotice Then
+                    Dim userResponse As Integer = ModMain.MyMsgBox(
                     noticeText & vbCrLf & vbCrLf &
-                    "需更新文件:" & vbCrLf & fullPath & newName & vbCrLf & vbCrLf &
+                    "需更新文件:" & vbCrLf & IO.Path.Combine(fullPath, newName) & vbCrLf & vbCrLf &
                     "自动下载更新过程中请勿关闭启动器！" & vbCrLf &
                     "也可以点击【下载链接】自行下载更新",
                     "检测到文件更新",
                     "自动更新", "打开下载链接", "取消更新",
                     False, True, True
                 )
+
                     If userResponse <> 1 Then
-                        If userResponse = 2 Then
-                            ModBase.OpenWebsite(downloadPath)
-                        End If
+                        If userResponse = 2 Then ModBase.OpenWebsite(downloadPath)
                         Continue For
                     End If
                 End If
 
-                Select Case operation
-                    Case "replace"
-                        ' 先下载新的，再删除旧文件，防止中途关闭导致旧文件丢失
-                        Try
-                            DownloadAndSaveFile(downloadPath, fullPath, newName)
-                        Catch ex As Exception
-                            ModBase.Log(ex, "[ModNut]CheckFileUpdate - 下载新文件失败（replace）：" & IO.Path.Combine(fullPath, newName), ModBase.LogLevel.Feedback, "出现错误")
-                            Continue For
-                        End Try
+                ' 执行下载（add/replace 都是下载到 newName）
+                Try
+                    DownloadAndSaveFile(downloadPath, fullPath, newName)
+                    downloadCount += 1
 
-                        If targetOld IsNot Nothing AndAlso targetOld.Exists AndAlso
-                       Not String.Equals(targetOld.Name, newName, StringComparison.OrdinalIgnoreCase) Then
-                            Try
+                    ' 新文件下载后，让其 MD5 缓存失效（防止下一条规则读取到旧值）
+                    If Not String.IsNullOrEmpty(newFilePath) Then md5Cache.Remove(newFilePath)
+                Catch ex As Exception
+                    ModBase.Log(ex, "[ModNut]CheckFileUpdate - 下载新文件失败：" & IO.Path.Combine(fullPath, newName), ModBase.LogLevel.Feedback, "出现错误")
+                    Continue For
+                End Try
 
-                                ModMain.Hint("删除文件:" & targetOld.FullName, ModMain.HintType.Green, True)
-                                ModBase.Log("[ModNut]CheckFileUpdate - 删除文件：" & targetOld.FullName, ModBase.LogLevel.Normal, "Normal")
-                                targetOld.Delete()
-                            Catch ex As Exception
-                                ModBase.Log(ex, "[ModNut]CheckFileUpdate - 删除旧文件失败：" & targetOld.FullName, ModBase.LogLevel.Feedback, "出现错误")
-                            End Try
+                ' replace：下载成功后再删除旧文件（保持你原“只删一个旧文件”的行为）
+                If operation = "replace" AndAlso Not String.IsNullOrEmpty(targetOldPath) Then
+                    Try
+                        If File.Exists(targetOldPath) AndAlso
+                       Not String.Equals(IO.Path.GetFileName(targetOldPath), newName, StringComparison.OrdinalIgnoreCase) Then
+
+                            If showNotice Then ModMain.Hint("删除文件:" & targetOldPath, ModMain.HintType.Green, True)
+                            ModBase.Log("[ModNut]CheckFileUpdate - 删除文件：" & targetOldPath, ModBase.LogLevel.Normal, "Normal")
+                            File.Delete(targetOldPath)
+                            deleteCount += 1
+                            md5Cache.Remove(targetOldPath)
                         End If
-
-                    Case "add"
-                        ' 新增：只负责把新文件下载过来
-                        Try
-                            DownloadAndSaveFile(downloadPath, fullPath, newName)
-                        Catch ex As Exception
-                            ModBase.Log(ex, "[ModNut]CheckFileUpdate - 下载新文件失败（add）：" & IO.Path.Combine(fullPath, newName), ModBase.LogLevel.Feedback, "出现错误")
-                            Continue For
-                        End Try
-                End Select
+                    Catch ex As Exception
+                        ModBase.Log(ex, "[ModNut]CheckFileUpdate - 删除旧文件失败：" & targetOldPath, ModBase.LogLevel.Feedback, "出现错误")
+                    End Try
+                End If
             Next
+
         Catch ex As Exception
             ModBase.Log(ex, "CheckFileUpdate 检查MOD更新失败", ModBase.LogLevel.Feedback, "出现错误")
+        Finally
+            sw.Stop()
+            ModBase.Log(
+            "[ModNut]CheckFileUpdate - 检查完成，耗时 " & sw.ElapsedMilliseconds & " ms" &
+            " | 规则=" & ruleTotal &
+            " | 解包=" & unpackCount &
+            " | 下载=" & downloadCount &
+            " | 删除=" & deleteCount &
+            " | 跳过(已最新)=" & skipAsNewestCount,
+            ModBase.LogLevel.Normal,
+            "Normal"
+        )
         End Try
     End Sub
+
+    Private Function GetMd5Cached(path As String, cache As Dictionary(Of String, String)) As String
+        Try
+            Dim v As String = Nothing
+            If cache.TryGetValue(path, v) Then Return v
+            Dim md5 = GetMD5HashFromFile(path).ToLower().Trim()
+            cache(path) = md5
+            Return md5
+        Catch ex As Exception
+            ModBase.Log(ex, "CheckFileUpdate 计算 MD5 失败（" & path & "）", ModBase.LogLevel.Hint, "出现错误")
+            Return ""
+        End Try
+    End Function
 
 
 
