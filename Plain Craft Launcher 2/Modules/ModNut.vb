@@ -12,7 +12,7 @@ Imports System.Diagnostics
 Imports Newtonsoft.Json.Linq
 Public Module ModNut
     '版本号
-    Public VersionNumber As Single = 212.0F
+    Public VersionNumber As Single = 213.0F
 
     Private IsCheckUpdate As Boolean = False
 
