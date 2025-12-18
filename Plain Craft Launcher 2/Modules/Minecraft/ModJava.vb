@@ -337,16 +337,13 @@ RetryGet:
                 AllowedJavaList = New List(Of JavaEntry) From {UserJava}
             Else
                 Select Case MyMsgBox("你在设置中手动指定了使用 Java " & JavaCurrent & "，但当前" & Requirement & "。" & vbCrLf &
-                            "如果强制使用该 Java，可能导致游戏崩溃。" & vbCrLf &
+                            "请在群文件下载可以使用的 Java。" & vbCrLf &
                             "你也可以将 游戏 Java 设置修改为 自动选择合适的 Java。" & vbCrLf &
                             vbCrLf &
                             " - 指定的 Java：" & UserJava.ToString,
-                            "Java 兼容性警告", "让 PCL 自动选择", "强制使用该 Java", "取消")
+                            "Java 兼容性警告", "让 PCL 自动选择", "取消")
                     Case 1 '让 PCL 自动选择
-                    Case 2 '强制使用指定的 Java
-                        Log("[Java] 已强制使用用户指定的不兼容 Java")
-                        AllowedJavaList = New List(Of JavaEntry) From {UserJava}
-                    Case 3 '取消启动
+                    Case 2 '取消启动
                         Throw New Exception(CancelException)
                 End Select
             End If
